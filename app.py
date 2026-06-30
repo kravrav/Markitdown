@@ -1,4 +1,5 @@
 import os
+import glob
 import tempfile
 from flask import Flask, request, jsonify, send_from_directory
 from markitdown import MarkItDown
@@ -13,6 +14,24 @@ ALLOWED_EXTENSIONS = {
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def cleanup_temp_files():
+    """Delete any leftover temp files from the system temp directory."""
+    tmp_dir = tempfile.gettempdir()
+    deleted = 0
+    for ext in ALLOWED_EXTENSIONS:
+        for f in glob.glob(os.path.join(tmp_dir, f"*.{ext}")):
+            try:
+                os.unlink(f)
+                deleted += 1
+            except Exception:
+                pass
+    return deleted
+
+
+# Clean up any leftover files from a previous crash on startup
+cleanup_temp_files()
 
 
 @app.route("/")
@@ -33,19 +52,27 @@ def convert():
         return jsonify({"error": f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"}), 400
 
     suffix = "." + file.filename.rsplit(".", 1)[1].lower()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        file.save(tmp.name)
-        tmp_path = tmp.name
-
+    tmp_path = None
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            file.save(tmp.name)
+            tmp_path = tmp.name
+
         result = md.convert(tmp_path)
         markdown_text = result.text_content
     except Exception as e:
         return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
     finally:
-        os.unlink(tmp_path)
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
     return jsonify({"markdown": markdown_text, "filename": file.filename})
+
+
+@app.route("/cleanup", methods=["POST"])
+def cleanup():
+    deleted = cleanup_temp_files()
+    return jsonify({"deleted": deleted})
 
 
 if __name__ == "__main__":
