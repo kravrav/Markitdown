@@ -54,6 +54,11 @@
       min-height: 20px;
     }
 
+    .btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
     button.convert-btn {
       background: #4f6ef7;
       color: white;
@@ -62,11 +67,41 @@
       border-radius: 8px;
       font-size: 1rem;
       cursor: pointer;
-      width: 100%;
+      flex: 1;
       transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
     }
     button.convert-btn:hover { background: #3a56d4; }
     button.convert-btn:disabled { background: #aab4e8; cursor: default; }
+
+    button.cancel-btn {
+      background: #e55353;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+      transition: background 0.2s;
+    }
+    button.cancel-btn:hover { background: #c0392b; }
+
+    button.reset-btn {
+      background: white;
+      color: #555;
+      border: 1px solid #ddd;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+      transition: background 0.15s;
+    }
+    button.reset-btn:hover { background: #f0f3ff; border-color: #4f6ef7; color: #4f6ef7; }
 
     .error-msg {
       color: #d9534f;
@@ -110,12 +145,11 @@
 
     .spinner {
       display: none;
-      width: 20px; height: 20px;
-      border: 3px solid #fff;
-      border-top-color: transparent;
+      width: 18px; height: 18px;
+      border: 3px solid rgba(255,255,255,0.5);
+      border-top-color: white;
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
-      margin: 0 auto;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
@@ -140,10 +174,14 @@
 
     <div class="selected-file" id="selected-file"></div>
 
-    <button class="convert-btn" id="convert-btn" disabled>
-      <span id="btn-label">Convert to Markdown</span>
-      <div class="spinner" id="spinner"></div>
-    </button>
+    <div class="btn-row">
+      <button class="convert-btn" id="convert-btn" disabled>
+        <div class="spinner" id="spinner"></div>
+        <span id="btn-label">Convert to Markdown</span>
+      </button>
+      <button class="cancel-btn" id="cancel-btn">Cancel</button>
+      <button class="reset-btn" id="reset-btn">New File</button>
+    </div>
 
     <div class="error-msg" id="error-msg"></div>
 
@@ -162,6 +200,8 @@
     const fileInput = document.getElementById("file-input");
     const selectedFile = document.getElementById("selected-file");
     const convertBtn = document.getElementById("convert-btn");
+    const cancelBtn = document.getElementById("cancel-btn");
+    const resetBtn = document.getElementById("reset-btn");
     const btnLabel = document.getElementById("btn-label");
     const spinner = document.getElementById("spinner");
     const errorMsg = document.getElementById("error-msg");
@@ -172,6 +212,7 @@
 
     let currentFile = null;
     let currentFilename = "";
+    let abortController = null;
 
     dropZone.addEventListener("click", () => fileInput.click());
     dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
@@ -190,20 +231,30 @@
       convertBtn.disabled = false;
       errorMsg.style.display = "none";
       resultSection.style.display = "none";
+      resetBtn.style.display = "none";
     }
 
     convertBtn.addEventListener("click", async () => {
       if (!currentFile) return;
-      btnLabel.style.display = "none";
+
+      abortController = new AbortController();
       spinner.style.display = "block";
+      btnLabel.textContent = "Converting…";
       convertBtn.disabled = true;
+      cancelBtn.style.display = "block";
+      resetBtn.style.display = "none";
       errorMsg.style.display = "none";
+      resultSection.style.display = "none";
 
       const formData = new FormData();
       formData.append("file", currentFile);
 
       try {
-        const resp = await fetch("/convert", { method: "POST", body: formData });
+        const resp = await fetch("/convert", {
+          method: "POST",
+          body: formData,
+          signal: abortController.signal
+        });
         const data = await resp.json();
         if (!resp.ok || data.error) {
           showError(data.error || "Conversion failed");
@@ -212,12 +263,37 @@
           resultSection.style.display = "block";
         }
       } catch (e) {
-        showError("Network error: " + e.message);
+        if (e.name === "AbortError") {
+          showError("Conversion cancelled.");
+        } else {
+          showError("Network error: " + e.message);
+        }
       } finally {
-        btnLabel.style.display = "inline";
         spinner.style.display = "none";
+        btnLabel.textContent = "Convert to Markdown";
         convertBtn.disabled = false;
+        cancelBtn.style.display = "none";
+        resetBtn.style.display = "block";
+        abortController = null;
       }
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      if (abortController) abortController.abort();
+    });
+
+    resetBtn.addEventListener("click", () => {
+      currentFile = null;
+      currentFilename = "";
+      fileInput.value = "";
+      selectedFile.textContent = "";
+      output.value = "";
+      errorMsg.style.display = "none";
+      resultSection.style.display = "none";
+      convertBtn.disabled = true;
+      resetBtn.style.display = "none";
+      cancelBtn.style.display = "none";
+      btnLabel.textContent = "Convert to Markdown";
     });
 
     function showError(msg) {

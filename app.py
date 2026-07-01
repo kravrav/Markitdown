@@ -9,7 +9,7 @@ md = MarkItDown()
 
 ALLOWED_EXTENSIONS = {
     "pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls",
-    "html", "htm", "csv", "json", "xml", "txt", "jpg", "jpeg", "png"
+    "html", "htm", "csv", "json", "xml", "txt", "md", "jpg", "jpeg", "png"
 }
 
 def allowed_file(filename):
