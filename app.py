@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from markitdown import MarkItDown
 
 app = Flask(__name__, static_folder="static")
-md = MarkItDown()
+MAX_FILE_MB = 10
 
 ALLOWED_EXTENSIONS = {
     "pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls",
@@ -51,6 +51,9 @@ def convert():
     if not allowed_file(file.filename):
         return jsonify({"error": f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"}), 400
 
+    if request.content_length and request.content_length > MAX_FILE_MB * 1024 * 1024:
+        return jsonify({"error": f"File too large. Maximum size is {MAX_FILE_MB} MB."}), 413
+
     suffix = "." + file.filename.rsplit(".", 1)[1].lower()
     tmp_path = None
     try:
@@ -58,8 +61,10 @@ def convert():
             file.save(tmp.name)
             tmp_path = tmp.name
 
+        md = MarkItDown()
         result = md.convert(tmp_path)
         markdown_text = result.text_content
+        del md
     except Exception as e:
         return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
     finally:
